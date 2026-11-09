@@ -97,9 +97,9 @@ AS
 BEGIN
   DECLARE @person_id int;  
   INSERT INTO PERSON(full_name, email, phone, account_status) VALUES (@full_name,@email,@phone,'Active');
-  INSERT INTO Partner_Professor(person_id, title, pdept_id) VALUES(@person_id,@title,@pdept_id);
   SET @person_id = (Select max(person_id) from Person);
-  PRINT 'GIU Academic Created';
+  INSERT INTO Partner_Professor(person_id, title, pdept_id) VALUES(@person_id,@title,@pdept_id);
+  PRINT 'Partner Professor. Created';
 end;
 GO
 
@@ -110,9 +110,9 @@ AS
 BEGIN
  DECLARE @person_id int;  
   INSERT INTO PERSON(full_name, email, phone, account_status) VALUES (@full_name,@email,@phone,'Active');
+  SET @person_id = (Select max(person_id) from Person);
   INSERT INTO Company_Rep(person_id, company_name, sector, position, location)
   VALUES(@person_id,@company_name,@sector,@position,@location);
-  SET @person_id = (Select max(person_id) from Person);
   PRINT 'Company Rep. Created';
 end;
 GO
@@ -147,14 +147,14 @@ BEGIN
     END
     ELSE
     BEGIN
-        SELECT 'User Already Registered';
+        PRINT 'User Already Registered';
     END
 end;
 GO
 CREATE PROCEDURE RegisterInterviewer(@person_id int, @role varchar(100))
 AS
 BEGIN
-DECLARE @interviewer_id int;
+
 
 IF NOT EXISTS(SELECT 1 FROM Interviewer WHERE person_id = @person_id)
 BEGIN
@@ -178,7 +178,7 @@ CREATE PROCEDURE AddDepartment(@name varchar(150), @description varchar(500),
 @faculty_id int)
 AS
 BEGIN
-    DECLARE @dept_id int;
+   
     INSERT INTO Department (name, description, faculty_id)
     VALUES (@name, @description, @faculty_id);
     PRINT 'Department Created';
@@ -477,13 +477,13 @@ RETURN
             WHEN GM.agreement_id IS NOT NULL THEN 'General MoU'
         END AS Type,
         CA.end_date AS EndDate,
-        CA.end_date - GETDATE() AS DaysRemaining
+        DATEDIFF(day, GETDATE(), CA.end_date) AS DaysRemaining
     FROM Cooperation_Agreement CA
     JOIN University U ON CA.partner_uni_id = U.uni_id
     LEFT JOIN Mobility_Agreement MA ON CA.agreement_id = MA.agreement_id
     LEFT JOIN Research_Agreement RA ON CA.agreement_id = RA.agreement_id
     LEFT JOIN General_MoU GM ON CA.agreement_id = GM.agreement_id
-    WHERE  CA.end_date-GETDATE() BETWEEN 0 AND @days_ahead
+    WHERE DATEDIFF(day, GETDATE(), CA.end_date) BETWEEN 0 AND @days_ahead
 );
 GO
 
@@ -664,7 +664,7 @@ RETURN
 );
 GO
 
-CREATE FUNCTION GetPartner_Dashboard()
+CREATE FUNCTION GetPartnerDashboard()
 RETURNS TABLE
 AS
 RETURN
@@ -704,10 +704,10 @@ RETURN
 );
 GO
 -- UNKNOWN FUNCTIONS USED
-CREATE FUNCTION RankPartners_By_Activity()
+CREATE FUNCTION RankPartnersByActivity()
 RETURNS TABLE
 AS
-RETURN
+RETURNGetMobility_Trend
 (
     WITH PartnerActivities AS (
         SELECT 
@@ -729,7 +729,7 @@ RETURN
 );
 GO
 
-CREATE FUNCTION GetMobility_Trend()
+CREATE FUNCTION GetMobilityTrend()
 RETURNS TABLE
 AS
 RETURN
@@ -750,3 +750,320 @@ RETURN
     LEFT JOIN YearlyMobility Y2 ON Y1.MobilityYear = Y2.MobilityYear + 1
 );
 GO
+
+
+-- 3. (GIU Academic)
+CREATE PROCEDURE AddOpportunityPrerequisite
+    @opp_id INT,
+    @course_id INT
+
+AS
+BEGIN
+    INSERT INTO Opp_Prereq_Course (opp_id, course_id)
+    VALUES (@opp_id, @course_id);
+    
+
+    SELECT 'Prerequisite course added successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE AddRequiredSkill
+    @opp_id INT,
+    @skill_id INT
+AS
+BEGIN
+
+    INSERT  INTO Opp_Skill  (opp_id, skill_id)
+    VALUES (@opp_id, @skill_id) ;
+    
+    SELECT ' Required skill added successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE  AddLanguageRequirement
+    @opp_id INT,
+    @language_req VARCHAR(50)
+AS
+BEGIN
+     INSERT INTO  Opp_Language_Req (opp_id,  language_req)
+      VALUES (@opp_id, @language_req);
+    
+    SELECT 'Language requirement added successfully' AS Message ;
+
+END;
+GO
+
+CREATE PROCEDURE  AddRelevantDate
+     @opp_id INT, 
+    @relevant_date DATE
+AS
+BEGIN
+    INSERT  INTO Opp_Relevant_Date    (opp_id, relevant_date)
+    VALUES (@opp_id, @relevant_date);
+    
+    SELECT 'Relevant date added successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE UpdateOpportunityStatus
+    @opp_id   INT ,
+    @status  VARCHAR(30)
+AS
+BEGIN
+       UPDATE Opportunity
+      SET status= @status
+    WHERE opp_id = @opp_id;
+    
+    SELECT 'Opportunity status updated successfully' AS Message;
+END;
+GO
+CREATE FUNCTION ViewOpportunityApplications (@opp_id INT)
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT 
+        a.app_id AS application,
+        p.full_name AS student_name,
+        prog.name AS program,
+        s.gpa,
+        a.app_date AS application_date,
+        a.status,
+        (SELECT COUNT(*) FROM Application_Document d WHERE d.app_id = a.app_id) AS uploaded_documents
+    FROM Application a
+    INNER JOIN Student s ON a.student_id = s.person_id
+    INNER JOIN Person p ON s.person_id = p.person_id
+    INNER JOIN Program prog ON s.program_id = prog.program_id
+    WHERE a.opp_id = @opp_id
+);
+GO
+
+CREATE PROCEDURE ScheduleInterview
+    @app_id INT,
+    @date DATE,
+    @time TIME,
+    @location_mode VARCHAR(30)
+AS
+BEGIN
+    INSERT INTO Interview (app_id, date, time, location_mode)
+    VALUES (@app_id, @date, @time, @location_mode);
+    
+    DECLARE @new_interview_id INT;
+    SELECT @new_interview_id = MAX(interview_id) FROM Interview;
+    
+    SELECT @new_interview_id AS interview_id;
+END;
+GO
+
+CREATE PROCEDURE AssignInterviewer
+    @interview_id INT,
+    @interviewer_id INT
+AS
+BEGIN
+    INSERT INTO Conducts_Interview (interviewer_id, interview_id)
+    VALUES (@interviewer_id, @interview_id);
+    
+    SELECT 'Interviewer assigned successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE DecideApplication
+    @app_id INT,
+    @status VARCHAR(20)
+AS
+BEGIN
+    UPDATE Application
+    SET status = @status, decision_date = CURRENT_TIMESTAMP
+    WHERE app_id = @app_id;
+    
+    SELECT 'Application decision recorded successfully' AS Message;
+  END;
+GO
+
+CREATE   FUNCTION GetRemainingCapacity (@opp_id INT)
+RETURNS  INT
+AS
+BEGIN
+      DECLARE @capacity INT;
+     DECLARE @accepted  INT ;
+    
+    SELECT @capacity = capacity  FROM Opportunity WHERE opp_id   = @opp_id;
+    
+    SELECT @accepted = COUNT(*) FROM Application 
+    WHERE opp_id = @opp_id AND status = 'Accepted';
+    
+    RETURN @capacity - @accepted;
+END;
+GO
+CREATE PROCEDURE CreateParticipation
+    @app_id INT,
+    @start_date DATE,
+    @end_date DATE
+AS
+BEGIN
+    INSERT INTO Participation (app_id, start_date, end_date, status)
+    VALUES (@app_id, @start_date, @end_date, 'Active');
+    
+    DECLARE @new_part_id INT;
+    SELECT @new_part_id = MAX(part_id) FROM Participation;
+    
+    SELECT @new_part_id AS part_id;
+END;
+GO
+
+CREATE PROCEDURE UpdateMobilityStatus
+    @part_id INT,
+    @pre_travel_status VARCHAR(50),
+    @during_status VARCHAR(50),
+    @post_status VARCHAR(50),
+    @final_outcome VARCHAR(300)
+AS
+BEGIN
+    UPDATE Mobility
+    SET pre_travel_status = @pre_travel_status,
+        during_status = @during_status,
+        post_status = @post_status,
+        final_outcome = @final_outcome
+    WHERE part_id = @part_id;
+    
+    SELECT 'Mobility status updated successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE UpdateProgramParticipation
+    @part_id INT,
+    @payment_status VARCHAR(30),
+    @visa_status VARCHAR(30),
+    @travel_status VARCHAR(30)
+AS
+BEGIN
+    UPDATE Program_Participation
+    SET payment_status = @payment_status,
+        visa_status = @visa_status,
+        travel_status = @travel_status
+    WHERE part_id = @part_id;
+    
+    SELECT 'Program participation updated successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE RecordCourseEquivalency
+    @part_id INT,
+    @host_course_title VARCHAR(150),
+    @host_credits DECIMAL(4,1),
+    @transferred_credits DECIMAL(4,1),
+    @giu_course_id INT
+AS
+BEGIN
+    INSERT INTO Course_Equivalency (part_id, host_course_title, host_credits, transferred_credits, giu_course_id, approval_status)
+    VALUES (@part_id, @host_course_title, @host_credits, @transferred_credits, @giu_course_id, 'Pending');
+    
+    SELECT 'Course equivalency recorded successfully' AS Message;
+END;
+GO
+
+CREATE PROCEDURE DecideCourseEquivalency
+    @part_id INT,
+    @host_course_title VARCHAR(150),
+    @approval_status VARCHAR(30)
+AS
+BEGIN
+    UPDATE Course_Equivalency
+    SET approval_status = @approval_status
+    WHERE part_id = @part_id AND host_course_title = @host_course_title;
+    
+    SELECT 'Course equivalency decision recorded successfully' AS Message;
+END;
+GO
+CREATE FUNCTION GetTransferredCredits (@part_id INT)
+RETURNS DECIMAL(5,1)
+AS
+BEGIN
+    DECLARE @total DECIMAL(5,1);
+    
+    SELECT @total = SUM(transferred_credits)
+    FROM Course_Equivalency
+    WHERE part_id = @part_id AND approval_status = 'Approved';
+    
+    IF @total IS NULL
+        SET @total = 0;
+        
+    RETURN @total;
+END;
+GO
+
+CREATE PROCEDURE LinkFundingToMobility
+    @fund_id INT,
+    @part_id INT
+AS
+BEGIN
+    INSERT INTO Fund_Supports_Mobility (fund_id, part_id)
+    VALUES (@fund_id, @part_id);
+    
+    SELECT 'Funding linked to mobility successfully' AS Message;
+END;
+GO
+
+CREATE FUNCTION GetOpportunityFillRates ()
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT 
+        o.opp_id AS opportunity,
+        o.type,
+        o.capacity,
+        (SELECT COUNT(*) FROM Application a WHERE a.opp_id = o.opp_id AND a.status = 'Accepted') AS accepted_applications,
+        ((SELECT COUNT(*) FROM Application a WHERE a.opp_id = o.opp_id AND a.status = 'Accepted') * 100.0 / NULLIF(o.capacity, 0)) AS fill_percentage
+    FROM Opportunity o
+    WHERE o.status = 'Open'
+);
+GO
+
+CREATE FUNCTION GetApplicationStatsByType ()
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT 
+        o.type AS opportunity_type,
+        (SELECT COUNT(*) FROM Application a INNER JOIN Opportunity opp ON a.opp_id = opp.opp_id WHERE opp.type = o.type AND a.status = 'Pending') AS pending_applications,
+        (SELECT COUNT(*) FROM Application a INNER JOIN Opportunity opp ON a.opp_id = opp.opp_id WHERE opp.type = o.type AND a.status = 'Accepted') AS accepted_applications,
+        (SELECT COUNT(*) FROM Application a INNER JOIN Opportunity opp ON a.opp_id = opp.opp_id WHERE opp.type = o.type AND a.status = 'Rejected') AS rejected_applications
+    FROM Opportunity o
+    GROUP BY o.type
+);
+GO
+
+CREATE PROCEDURE NotifyUpcomingDeadlines
+    @days_ahead INT
+AS
+BEGIN
+    DECLARE @count INT;
+    
+    SELECT @count = COUNT(s.person_id)
+    FROM Opportunity o
+    INNER JOIN Opp_Eligible_Program oep ON o.opp_id = oep.opp_id
+    INNER JOIN Student s ON oep.program_id = s.program_id
+    WHERE DATEDIFF(day, CURRENT_TIMESTAMP, o.app_close_date) = @days_ahead
+      AND o.status = 'Open';
+
+    INSERT INTO Notification (message, timestamp, category, urgency, read_status, recipient_id)
+    SELECT 
+        'Opportunity closing soon', 
+        CURRENT_TIMESTAMP, 
+        'Reminder', 
+        'High', 
+        0, 
+        s.person_id
+    FROM Opportunity o
+    INNER JOIN Opp_Eligible_Program oep ON o.opp_id = oep.opp_id
+    INNER JOIN Student s ON oep.program_id = s.program_id
+    WHERE DATEDIFF(day, CURRENT_TIMESTAMP, o.app_close_date) = @days_ahead
+      AND o.status = 'Open';
+      
+    SELECT CAST(@count AS VARCHAR(20)) + ' notifications sent' AS Message;
+END;
+GO 
+GO
+
